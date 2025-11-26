@@ -2,7 +2,7 @@
 
 ## 数据结构分析
 
-您的MinerU输出包含：
+MinerU输出包含：
 ```
 文献目录/
 ├── full.md                  # 完整markdown文本
