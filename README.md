@@ -122,20 +122,7 @@ print(answer)
 ## 📁 项目结构
 
 ```
-F:\Claude code\
-├── README.md                           # 本文件
-├── requirements.txt                    # 依赖列表
-│
-├── multi_index_builder.py              # 多索引构建脚本（推荐）
-├── multi_index_rag.py                  # 高级RAG系统（混合检索+重排序+LLM）
-│
-├── patent_rag_faiss.py                 # 基础FAISS RAG实现
-├── patent_rag_advanced.py              # 高级功能（重排序+DeepSeek）
-├── patent_rag_gdrive.py                # Google Drive集成版本
-├── patent_rag_lowmem_standalone.py     # 低内存独立版本
-├── patent_rag_incremental.py           # 增量构建版本
-│
-└── compare_content_sources.py          # 工具：对比full.md vs content_list.json
+
 
 Google Drive结构：
 /content/drive/MyDrive/PatentRAG/
