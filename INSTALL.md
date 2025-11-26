@@ -6,8 +6,8 @@
 
 ```bash
 # 1. 克隆项目
-git clone <your-repo-url>
-cd patent-rag
+[git clone https://github.com/DuSheming/-RAG-.git]
+cd -RAG-
 
 # 2. 创建虚拟环境（推荐）
 python -m venv venv
