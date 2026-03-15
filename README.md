@@ -1,415 +1,159 @@
-# 📚 专利/文献RAG检索系统
+# 文献专利 RAG 检索系统
 
-一个基于FAISS和sentence-transformers的高性能文献检索系统，支持多索引架构、混合检索、重排序和LLM问答。
+基于 BGE-M3 + FAISS + BM25 的多模态文献专利检索系统，支持混合检索、重排序和 LLM 问答。系统经历了 4 个版本的迭代，从基础 RAG 逐步演进为支持结构化文档解析、多模态生成和自动化评估的完整系统。
 
-## 🌟 项目特点
+## 版本演进
 
-- ✅ **多索引架构**：将大规模文档分割成多个小索引，避免内存溢出
-- ✅ **完整内容索引**：基于MinerU的`full.md`，保留文档完整信息
-- ✅ **混合检索**：向量检索（语义） + BM25（关键词）
-- ✅ **智能重排序**：Cross-Encoder精准排序
-- ✅ **LLM集成**：DeepSeek智能问答
-- ✅ **低内存友好**：12G内存即可运行
-- ✅ **断点续传**：支持中断后继续构建
-- ✅ **Google Drive集成**：自动保存到云端，永不丢失
+| 版本 | 核心特性 | 关键技术 |
+|------|----------|----------|
+| **v1** | 基础 RAG | FAISS 向量检索 + BM25 关键词检索 + 多索引架构 |
+| **v2** | 多模态检索 | BGE-M3 三路检索（Dense + Sparse + BM25）+ RRF 融合 + Cross-Encoder 重排序 + 图片 caption 处理 |
+| **v3** | 稀疏检索加速 + 评估体系 | Sparse 存储升级 CSR 矩阵（快 100x）+ VLM 图片分级处理 + RAGAS 四维评估框架 |
+| **v4** | 结构化解析 + 多模态生成 | content_list.json 结构化解析 + 文档层级树 + 表格三重表示 + Parent-Child Chunking + 多模态 LLM 生成 |
 
-## 📊 系统架构
+## 系统架构（v4）
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     用户查询                              │
-└────────────┬────────────────────────────────────────────┘
-             │
-             ▼
-┌────────────────────────────────────────────────────────┐
-│           MultiIndexRAG（查询引擎）                      │
-├────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
-│  │  向量检索     │  │  BM25检索    │  │  重排序       │ │
-│  │ (语义相似)    │  │ (关键词匹配)  │  │ (精准排序)    │ │
-│  └──────────────┘  └──────────────┘  └──────────────┘ │
-└────────────┬────────────────────────────────────────────┘
-             │
-             ▼
-┌────────────────────────────────────────────────────────┐
-│              10个独立索引（Google Drive）                │
-│  index_0  index_1  index_2  ...  index_9               │
-│  (90文档) (90文档) (90文档)      (90文档)               │
-└────────────────────────────────────────────────────────┘
-             │
-             ▼
-┌────────────────────────────────────────────────────────┐
-│              DeepSeek LLM（可选）                        │
-│              智能问答与总结                               │
-└────────────────────────────────────────────────────────┘
+用户查询
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│          LiteratureRAG_v4 检索引擎           │
+├─────────────────────────────────────────────┤
+│                                             │
+│  ┌─────────┐  ┌──────────┐  ┌───────────┐  │
+│  │ Dense   │  │ Sparse   │  │  BM25     │  │
+│  │ FAISS   │  │ CSR矩阵  │  │  jieba    │  │
+│  │ HNSW    │  │ BGE-M3   │  │  分词     │  │
+│  └────┬────┘  └────┬─────┘  └─────┬─────┘  │
+│       └────────────┼──────────────┘         │
+│                    ▼                        │
+│              RRF 融合排序                    │
+│                    ▼                        │
+│           Cross-Encoder 重排序              │
+│                    ▼                        │
+│         Parent-Child 上下文扩展              │
+└─────────────────────┬───────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────┐
+│            多模态生成 (v4)                    │
+│  文本 + 原始表格HTML + 原始图片 → LLM/VLM    │
+└─────────────────────────────────────────────┘
 ```
 
-## 🚀 快速开始
+## 各版本详细说明
+
+### v1 — 基础多索引 RAG
+
+- 将大规模文档分割成多个小索引，避免内存溢出（904 篇文献 → 10 个小索引）
+- FAISS 向量检索（语义相似）+ BM25 检索（关键词匹配）
+- Cross-Encoder 重排序
+- DeepSeek LLM 集成问答
+- 支持断点续传和 Google Drive 持久化
+
+### v2 — 多模态混合检索
+
+- 升级为 BGE-M3 编码模型（支持 Dense + Sparse + ColBERT 三种表示）
+- 三路检索 + RRF（Reciprocal Rank Fusion）融合
+- 图片 caption 文本化处理
+- MinerU `full.md` 文档解析 + Markdown 层级切块
+
+### v3 — 稀疏检索加速 + RAGAS 评估
+
+- **Sparse 存储升级**：`List[dict]` Python 遍历 → `scipy.sparse.csr_matrix` 矩阵乘法，检索速度提升约 100 倍
+- **VLM 图片分级处理**：caption 足够时走文本，机理图/结构图调 VLM API（GPT-4o / Claude）生成详细描述
+- **RAGAS 评估框架**：
+  - 自动从文献库生成测试问答对（无需手动标注）
+  - 四维指标：context_recall、context_precision、faithfulness、answer_relevancy
+  - 快速幻觉检测（无需 ground truth）
+
+### v4 — 结构化解析 + 多模态生成
+
+- **结构化文档解析**：基于 MinerU `content_list.json`，按 block 类型（text/table/image/equation）差异化处理
+- **层级文档树**：借鉴 PageIndex 思想，从 MinerU layout 构建 section 树，支持上下文扩展
+- **表格三重表示**：结构化行文本（BM25）+ LLM 摘要（Dense）+ 原始 HTML（生成时引用）
+- **Parent-Child Chunking**：小 chunk 精确检索 → 回溯 parent 大 chunk 送 LLM，兼顾精度和完整性
+- **丰富元数据**：DOI、作者、年份、文档类型、页码，支持 metadata filtering
+- **数据清洗**：自动识别并排除非学术文档（发票、收据等）
+- **多模态生成**：文本 + 原始表格 + 原始图片一起送多模态 LLM
+
+## 快速开始
 
 ### 环境要求
 
 - Python 3.8+
-- 12GB+ RAM（推荐16GB）
-- Google Drive账号（用于存储索引）
-- （可选）DeepSeek API密钥
+- 16GB+ RAM（推荐，v1 可在 12GB 下运行）
+- Google Colab（推荐，免费 GPU）
+- DeepSeek API 密钥
+- （可选）OpenAI API 密钥（GPT-4o VLM 图片描述）
 
 ### 安装依赖
 
 ```bash
-pip install -r requirements.txt
+# v1/v2 基础依赖
+pip install faiss-cpu sentence-transformers rank-bm25 openai tqdm
+
+# v3/v4 额外依赖
+pip install FlagEmbedding scipy langchain langchain-text-splitters langchain-openai
+pip install ragas datasets pillow jieba
+pip install lxml beautifulsoup4  # v4 表格处理
 ```
 
-### 在Google Colab中使用
-
-#### 1. 挂载Google Drive
+### 在 Google Colab 中使用
 
 ```python
+# 1. 挂载 Google Drive
 from google.colab import drive
 drive.mount('/content/drive')
+
+# 2. 建索引（以 v4 为例）
+all_chunks, doc_trees = load_all_documents_v4(MINERU_DIR, use_vlm=True, use_table_summary=True)
+build_index_v4(all_chunks, doc_trees, INDEX_DIR)
+
+# 3. 加载并查询
+rag = LiteratureRAG_v4(index_dir=INDEX_DIR)
+result = rag.ask("Which photoinitiators work better under LED light sources?")
+print(result['answer'])
 ```
 
-#### 2. 构建索引
+## 核心技术栈
 
-```python
-# 运行多索引构建脚本
-# 复制 multi_index_builder.py 中的代码到Colab
+| 组件 | 技术 | 用途 |
+|------|------|------|
+| Embedding | BGE-M3 (BAAI) | Dense + Sparse 双编码 |
+| 向量索引 | FAISS HNSW | 高效近似最近邻搜索 |
+| 稀疏索引 | scipy CSR Matrix | 高速稀疏向量点积 |
+| 关键词检索 | BM25Okapi + jieba | 中英文关键词匹配 |
+| 重排序 | BGE-Reranker-v2-M3 | Cross-Encoder 精排 |
+| 文档解析 | MinerU | PDF → 结构化 Markdown/JSON |
+| LLM | DeepSeek Chat | 问答生成、表格摘要、评估 |
+| VLM | GPT-4o / Claude | 化学图片描述、多模态生成 |
+| 评估 | RAGAS | 检索 + 生成质量四维评估 |
 
-for i in range(10):
-    build_small_index(i, docs_per_index=90)
-```
-
-**预计时间**：约4小时（904个文档）
-
-#### 3. 查询
-
-```python
-# 简单查询
-results = search_all_indices(
-    "Which photoinitiators work better under LED?",
-    top_k=5
-)
-
-for i, r in enumerate(results, 1):
-    print(f"[{i}] {r['score']:.3f}")
-    print(r['content'][:200])
-```
-
-#### 4. 使用高级功能
-
-```python
-from multi_index_rag import MultiIndexRAG
-
-# 初始化（带重排序）
-rag = MultiIndexRAG(
-    use_reranker=True,
-    deepseek_api_key="sk-your-key"  # 可选
-)
-
-# 混合检索
-results = rag.search_hybrid(
-    "copper catalyst for C-S coupling",
-    top_k=5
-)
-
-# LLM问答（需要DeepSeek API）
-answer, refs = rag.query_with_llm(
-    "如何选择适合LED光源的光引发剂？",
-    top_k=5
-)
-print(answer)
-```
-
-## 📁 项目结构
+## 项目文件
 
 ```
-
-
-Google Drive结构：
-/content/drive/MyDrive/PatentRAG/
-├── index_0/                            # 第1个小索引（文档1-90）
-│   ├── faiss.index
-│   └── documents.pkl
-├── index_1/                            # 第2个小索引（文档91-180）
-│   ├── faiss.index
-│   └── documents.pkl
-├── ...
-├── index_9/                            # 第10个小索引（文档811-904）
-│   ├── faiss.index
-│   └── documents.pkl
-└── checkpoint.json                     # 进度检查点
+├── 文献专利RAG系统.ipynb    # 主文件，包含 v1-v4 所有版本代码
+├── RAG.py                  # v1 独立 Python 脚本
+├── README.md               # 项目说明
+├── INSTALL.md              # 安装指南
+└── requirements_full.txt   # 依赖列表
 ```
 
-## 💡 核心功能说明
+## 参考资料
 
-### 1. 多索引架构
+- [BGE-M3](https://huggingface.co/BAAI/bge-m3) — 多语言多粒度嵌入模型
+- [FAISS](https://github.com/facebookresearch/faiss) — Facebook AI 向量检索库
+- [MinerU](https://github.com/opendatalab/MinerU) — PDF 结构化解析工具
+- [RAGAS](https://github.com/explodinggradients/ragas) — RAG 评估框架
+- [DeepSeek](https://www.deepseek.com/) — LLM API 服务
 
-**为什么使用多索引？**
+## 作者
 
-传统方案：
-```
-所有文档 → 单个大索引 → 内存爆炸 💥
-```
+开发者：Sheming Du
 
-我们的方案：
-```
-904文档 → 10个小索引（每个90文档）→ 内存安全 ✅
-查询时 → 动态加载 → 合并结果 → 完美！
-```
+联系方式：862349743@qq.com
 
-**优势**：
-- 每个索引只占用300-500MB内存
-- 构建时峰值内存<4GB
-- 查询时动态加载，用完即释放
-
-### 2. 混合检索策略
-
-```python
-# 向量检索（语义相似）
-results_vector = search_vector(query)  # 理解"光引发剂"和"photoinitiator"是同一概念
-
-# BM25检索（关键词匹配）
-results_bm25 = search_bm25(query)      # 精确匹配"LED"、"395nm"等关键词
-
-# 融合
-results_hybrid = combine(results_vector, results_bm25)  # 最佳结果
-```
-
-### 3. Cross-Encoder重排序
-
-```python
-# 初始检索：快速但粗糙
-candidates = search(query, top_k=20)  # 召回候选
-
-# 重排序：精准但较慢
-reranked = rerank(query, candidates)  # 精确排序
-
-# 结果：相关度提升20-30%
-```
-
-### 4. DeepSeek智能问答
-
-```python
-# 检索 + LLM = 智能问答
-query = "如何选择光引发剂？"
-context = retrieve(query)              # 检索相关文献
-answer = deepseek.generate(context)    # 生成专业回答
-
-# 输出：
-# "根据文献[1]，选择LED光引发剂需要考虑：
-#  1. 吸收波长与LED波长匹配（365nm/395nm）
-#  2. 单组分vs多组分体系
-#  3. 应用场景（涂料、3D打印等）..."
-```
-
-## 📈 性能指标
-
-### 构建性能
-
-| 指标 | 数值 |
-|------|------|
-| 文档数量 | 904篇 |
-| 文档块数 | ~120,000个 |
-| 索引大小 | ~250MB（10个索引合计） |
-| 构建时间 | ~4小时（Colab免费版） |
-| 峰值内存 | <4GB |
-
-### 查询性能
-
-| 检索模式 | 速度 | 相关度 | 内存占用 |
-|---------|------|--------|---------|
-| 纯向量 | 0.5s | ⭐⭐⭐⭐ | <2GB |
-| 混合检索 | 1.0s | ⭐⭐⭐⭐⭐ | <2GB |
-| +重排序 | 1.5s | ⭐⭐⭐⭐⭐ | <2GB |
-| +DeepSeek | 3-5s | ⭐⭐⭐⭐⭐ | <2GB |
-
-### 检索质量对比
-
-查询：`"Which photoinitiators work better under LED?"`
-
-| 方法 | Top-1 相关度 | Top-3 覆盖率 |
-|------|--------------|-------------|
-| 纯向量 | 0.728 | 85% |
-| 向量+BM25 | 0.751 | 92% |
-| **混合+重排序** | **0.847** | **98%** |
-
-## 🛠️ 高级配置
-
-### 调整索引数量
-
-```python
-# 更多内存可用时（16GB+）
-build_small_index(i, docs_per_index=150)  # 每个索引150个文档
-NUM_INDICES = 6  # 只需6个索引
-
-# 内存不足时（8GB）
-build_small_index(i, docs_per_index=50)   # 每个索引50个文档
-NUM_INDICES = 18  # 需要18个索引
-```
-
-### 自定义重排序模型
-
-```python
-from sentence_transformers import CrossEncoder
-
-# 使用更强大的模型（速度较慢）
-reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-12-v2')
-
-# 使用多语言模型
-reranker = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
-```
-
-### 自定义分块策略
-
-```python
-# 修改 MarkdownChunker 参数
-chunker = MarkdownChunker(
-    chunk_size=300,     # 更小的块（更精准，但数量更多）
-    chunk_overlap=50    # 更少的重叠（减少冗余）
-)
-```
-
-## 🔍 使用场景
-
-### 1. 文献综述
-
-```python
-# 查询多个主题
-topics = [
-    "copper catalyst synthesis",
-    "LED photoinitiators",
-    "green chemistry methods"
-]
-
-for topic in topics:
-    results = rag.search_hybrid(topic, top_k=10)
-    # 分析、总结...
-```
-
-### 2. 技术调研
-
-```python
-# 结合LLM生成报告
-query = "总结近年来铜催化C-S偶联反应的研究进展"
-answer, refs = rag.query_with_llm(query, top_k=10)
-
-# 输出完整技术报告
-print(answer)
-```
-
-### 3. 专利检索
-
-```python
-# 查找相关专利
-results = rag.search_hybrid(
-    "photopolymerization ink formulation",
-    top_k=20
-)
-
-# 筛选专利文档
-patents = [r for r in results if 'CN' in r['metadata']['doc_id'] or 'US' in r['metadata']['doc_id']]
-```
-
-## 🐛 常见问题
-
-### Q1: 构建索引时内存溢出
-
-**A**: 减少每个索引的文档数量：
-
-```python
-# 从90改为50
-build_small_index(i, docs_per_index=50)
-```
-
-### Q2: 查询速度慢
-
-**A**:
-- 只搜索部分索引（如果知道文档大致范围）
-- 禁用重排序（速度提升50%）
-- 减少top_k数量
-
-```python
-# 快速模式
-results = rag.search_vector(query, top_k=5)  # 不用混合检索
-```
-
-### Q3: DeepSeek API限流
-
-**A**:
-- 免费版有速率限制（5次/分钟）
-- 添加延时：`time.sleep(12)`
-- 或升级为付费版
-
-### Q4: 找不到某些文档
-
-**A**: 检查文件结构：
-
-```python
-# 确保文档包含 full.md
-doc_path = Path("/content/drive/MyDrive/MinerU/xxx")
-print((doc_path / "full.md").exists())  # 应该为True
-```
-
-### Q5: 如何更新索引？
-
-**A**: 构建新文档的索引：
-
-```python
-# 方法1: 增加新的索引
-build_small_index(10, docs_per_index=50)  # index_10
-
-# 方法2: 重建特定索引
-build_small_index(0, docs_per_index=90)   # 重建index_0
-```
-
-## 📚 参考资料
-
-### 相关论文
-
-- **FAISS**: [Billion-scale similarity search with GPUs](https://arxiv.org/abs/1702.08734)
-- **Sentence-BERT**: [Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks](https://arxiv.org/abs/1908.10084)
-- **BM25**: [The Probabilistic Relevance Framework: BM25 and Beyond](http://www.staff.city.ac.uk/~sb317/papers/foundations_bm25_review.pdf)
-
-### 相关工具
-
-- [MinerU](https://github.com/opendatalab/MinerU) - PDF解析工具
-- [FAISS](https://github.com/facebookresearch/faiss) - 向量检索库
-- [Sentence Transformers](https://www.sbert.net/) - 句子向量化
-- [DeepSeek](https://www.deepseek.com/) - LLM API服务
-
-## 🤝 贡献
-
-欢迎提出Issue和Pull Request！
-
-### 开发路线图
-
-- [ ] 支持图片和表格的多模态检索
-- [ ] 添加Web界面（Gradio/Streamlit）
-- [ ] 集成更多LLM（Claude、GPT-4等）
-- [ ] 支持实时更新索引
-- [ ] 添加引用网络分析
-- [ ] 实体识别和知识图谱
-
-## 📄 许可证
+## 许可证
 
 MIT License
-
-## 👥 作者
-
-开发者：[Sheming Du]
-
-如有问题，请联系：[862349743@qq.com]
-
----
-
-## 🎉 致谢
-
-感谢以下开源项目：
-
-- Facebook AI Research - FAISS
-- Hugging Face - Transformers & Sentence-Transformers
-- OpenDataLab - MinerU
-- DeepSeek - LLM API
-
----
-
-**⭐ 如果这个项目对你有帮助，请给个Star！**

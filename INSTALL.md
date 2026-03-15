@@ -22,8 +22,13 @@ pip install -r requirements_full.txt
 ### 在Google Colab
 
 ```python
-# 一行命令安装所有依赖
+# v1/v2 基础依赖
 !pip install faiss-cpu sentence-transformers rank-bm25 openai psutil -q
+
+# v3/v4 额外依赖
+!pip install FlagEmbedding scipy langchain langchain-text-splitters langchain-openai -q
+!pip install ragas datasets pillow jieba -q
+!pip install lxml beautifulsoup4 -q  # v4 表格处理
 
 # 挂载Google Drive
 from google.colab import drive
@@ -32,23 +37,30 @@ drive.mount('/content/drive')
 
 ## 🔧 依赖说明
 
-### 核心依赖（必需）
+### 核心依赖（v1/v2 必需）
 
 | 包名 | 版本 | 用途 |
 |------|------|------|
-| faiss-cpu | 1.7.4 | 向量检索引擎 |
-| sentence-transformers | ≥2.2.2 | 文本向量化 |
+| faiss-cpu / faiss-gpu | 1.7.4+ | 向量检索引擎 |
+| sentence-transformers | ≥2.2.2 | 文本向量化 / Cross-Encoder 重排序 |
 | torch | ≥2.0.0 | 深度学习框架 |
 | numpy | ≥1.24.0 | 数组计算 |
+| rank-bm25 | ≥0.2.2 | BM25 关键词检索 |
+| openai | ≥1.0.0 | DeepSeek / OpenAI API |
 | tqdm | ≥4.65.0 | 进度条 |
 
-### 高级功能（可选）
+### v3/v4 额外依赖
 
-| 包名 | 版本 | 用途 |
-|------|------|------|
-| rank-bm25 | ≥0.2.2 | BM25检索 |
-| openai | ≥1.0.0 | DeepSeek API |
-| psutil | ≥5.9.0 | 内存监控 |
+| 包名 | 用途 |
+|------|------|
+| FlagEmbedding | BGE-M3 编码模型 |
+| scipy | CSR 稀疏矩阵（v3+ Sparse 检索加速） |
+| jieba | 中文分词（BM25） |
+| langchain / langchain-text-splitters | 文档切块 |
+| langchain-openai | RAGAS 评估 LLM 接口 |
+| ragas / datasets | RAGAS 评估框架 |
+| pillow | 图片处理 |
+| lxml / beautifulsoup4 | v4 HTML 表格解析 |
 
 ## 💾 磁盘空间需求
 
